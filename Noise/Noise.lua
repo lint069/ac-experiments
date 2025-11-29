@@ -1,4 +1,3 @@
-
 local settings = ac.storage {
     advanced = false,
     speed = 0.5,
@@ -9,16 +8,15 @@ local settings = ac.storage {
     tint = rgb(0, 0, 0),
     sizeMult = 1,
 
-    stepsX = 50,
-    stepsY = 50,
-
-    sizeX = 0.01,
-    sizeY = 0.01,
+    steps = vec2(50, 50),
+    size = vec2(0.01, 0.01),
 
     tooltipPadding = vec2(5, 5),
 }
 
 local time = 0
+local lastSpeed = 0
+local appwindow = ac.accessAppWindow('IMGUI_LUA_Noise_main')
 
 ---@param p1 vec2
 ---@param p2 vec2
@@ -27,15 +25,15 @@ local time = 0
 ---@param persistence? number [0..1]
 ---@param opacity? number
 local function drawNoise(p1, p2, dt, octaves, persistence, opacity)
-    local dx = (p2.x - p1.x) / settings.stepsX
-    local dy = (p2.y - p1.y) / settings.stepsY
+    local dx = (p2.x - p1.x) / settings.steps.x
+    local dy = (p2.y - p1.y) / settings.steps.y
 
-    for i = 0, settings.stepsX - 1 do
-        for j = 0, settings.stepsY - 1 do
+    for i = 0, settings.steps.x - 1 do
+        for j = 0, settings.steps.y - 1 do
             local x = p1.x + i * dx
             local y = p1.y + j * dy
 
-            local n = math.perlin(vec3(x * settings.sizeX, y * settings.sizeY, time), octaves, persistence)
+            local n = math.perlin(vec3(x * settings.size.x, y * settings.size.y, time), octaves, persistence)
             local brightness = (n + 1) / 2
 
             local color = rgbm(brightness - settings.tint.r, brightness - settings.tint.g, brightness - settings.tint.b, opacity or 1)
@@ -46,16 +44,24 @@ local function drawNoise(p1, p2, dt, octaves, persistence, opacity)
     time = time + settings.speed * dt
 end
 
+local function resizeApp()
+    if not appwindow:valid() then return end
+    appwindow:resize(vec2(300, 300) * settings.sizeMult)
+end
+
 ---@param p1 vec2
 ---@param p2 vec2
----@param changeCursor boolean?
----@param changeCursorTo ui.MouseCursor?
+---@param changeCursor boolean
+---@param cursor ui.MouseCursor?
 ---@param callback fun()
-local function checkHovered(p1, p2, changeCursor, changeCursorTo, callback)
+---@return boolean hovered
+local function onHover(p1, p2, changeCursor, cursor, callback)
     if ui.rectHovered(p1, p2) then
-        if changeCursor then ui.setMouseCursor(changeCursorTo) end
+        if changeCursor then ui.setMouseCursor(cursor) end
         callback()
+        return true
     end
+    return false
 end
 
 ---@param text string Text displayed in the tooltip
@@ -65,26 +71,38 @@ local function tooltip(text)
     end
 end
 
+---@param dt number Delta time
+---@param filepath string File path to save the image in
+local function savePatternAsImage(dt, filepath)
+    local canvas = ui.ExtraCanvas(vec2(300, 300) * settings.sizeMult, 0, render.AntialiasingMode.CMAA, render.TextureFormat.R8G8B8A8.UNorm)
+
+    canvas:update(function()
+        drawNoise(vec2(0, 0), vec2(300, 300) * settings.sizeMult, dt, settings.octaves, settings.persistence, settings.opacity)
+    end)
+    canvas:save(filepath, ac.ImageFormat.PNG)
+end
+
 function script.windowMain(dt)
     if settings.frost then ui.forceSimplifiedComposition(true) end
     drawNoise(vec2(0, 0), vec2(300, 300) * settings.sizeMult, dt, settings.octaves, settings.persistence, settings.opacity)
+    resizeApp()
 end
 
--- spaghetti code ahead
-function script.settings()
+--spaghetti code
+function script.settings(dt)
+    ac.debug('mp', ui.mouseLocalPos())
+
+    local sliderStart = 20
+    local sliderEnd = 279
+
     ui.beginGroup(400)
-
-    --ac.debug('mp', ui.mouseLocalPos())
-
-    local sliderX = 20
-    local sliderY = 279
 
     ui.dwriteText('Noise shader settings:', 18)
 
-    --
+    ---
 
     ui.sameLine(400)
-    ui.configureStyle(ac.getUI().accentColor, false, true, 0.6)
+    ui.configureStyle(ac.getUI().accentColor, false, false, 0.7)
 
     if ui.iconButton(ui.Icons.Reset, vec2(50, 25), 5) then
         settings.speed = 0.5
@@ -96,58 +114,58 @@ function script.settings()
         settings.tint.g = 0
         settings.tint.b = 0
         settings.sizeMult = 1
-        settings.sizeX = 0.01
-        settings.sizeY = 0.01
-        settings.stepsX = 50
-        settings.stepsY = 50
+        settings.size.x = 0.01
+        settings.size.y = 0.01
+        settings.steps.x = 50
+        settings.steps.y = 50
     end
 
-    --
+    ---
 
     local speedRef = refnumber(settings.speed)
-    checkHovered(vec2(sliderX, 57), vec2(sliderY, 79), true, ui.MouseCursor.ResizeEW, function()
+    onHover(vec2(sliderStart, 59), vec2(sliderEnd, 81), true, ui.MouseCursor.ResizeEW, function()
         if ui.mouseReleased(ui.MouseButton.Right) then
             settings.speed = 0.5
         end
     end)
 
-    if ui.slider('Noise speed', speedRef, 0.1, 1, '%.2f') then
+    if ui.slider('Noise speed', speedRef, 0.05, 1, '%.2f') then
         settings.speed = speedRef.value
     end
 
-    --
+    ---
 
-    local sizeRef = refnumber(settings.sizeX)
-    checkHovered(vec2(sliderX, 83), vec2(sliderY, 105), true, ui.MouseCursor.ResizeEW, function()
+    local sizeRef = refnumber(settings.size.x)
+    onHover(vec2(sliderStart, 85), vec2(sliderEnd, 107), true, ui.MouseCursor.ResizeEW, function()
         if ui.mouseReleased(ui.MouseButton.Right) then
-            settings.sizeX = 0.01
-            settings.sizeY = 0.01
+            settings.size.x = 0.01
+            settings.size.y = 0.01
         end
     end)
 
     if ui.slider('Noise size', sizeRef, 0.001, 0.1, '%.3f') then
-        settings.sizeX = sizeRef.value
-        settings.sizeY = sizeRef.value
+        settings.size.x = sizeRef.value
+        settings.size.y = sizeRef.value
     end
 
-    --
+    ---
 
-    local resolutionRef = refnumber(settings.stepsX)
-    checkHovered(vec2(sliderX, 109), vec2(sliderY, 131), true, ui.MouseCursor.ResizeEW, function()
+    local resolutionRef = refnumber(settings.steps.x)
+    onHover(vec2(sliderStart, 111), vec2(sliderEnd, 133), true, ui.MouseCursor.ResizeEW, function()
         if ui.mouseReleased(ui.MouseButton.Right) then
-            settings.stepsX = 50
-            settings.stepsY = 50
+            settings.steps.x = 50
+            settings.steps.y = 50
         end
     end)
 
     if ui.slider('Noise resolution', resolutionRef, 1, 200, '%.0f', true) then
-        settings.stepsX = resolutionRef.value
-        settings.stepsY = resolutionRef.value
+        settings.steps.x = resolutionRef.value
+        settings.steps.y = resolutionRef.value
     end
 
-    --
+    ---
 
-    checkHovered(vec2(sliderX, 140), vec2(42, 162), true, ui.MouseCursor.Hand, function() end)
+    onHover(vec2(sliderStart, 142), vec2(42, 164), true, ui.MouseCursor.Hand, function() end)
 
     ui.offsetCursorY(5)
     if ui.checkbox('Advanced', settings.advanced) then
@@ -160,12 +178,12 @@ function script.settings()
         return
     end
 
-    --
+    ---
 
     ui.offsetCursorY(3)
 
     local octaves = refnumber(settings.octaves)
-    checkHovered(vec2(sliderX, 169), vec2(sliderY, 191), true, ui.MouseCursor.ResizeEW, function()
+    onHover(vec2(sliderStart, 171), vec2(sliderEnd, 193), true, ui.MouseCursor.ResizeEW, function()
         if ui.mouseReleased(ui.MouseButton.Right) then
             settings.octaves = 1
         end
@@ -176,10 +194,10 @@ function script.settings()
     end
     tooltip('More octaves add detail to the noise.')
 
-    --
+    ---
 
     local persistence = refnumber(settings.persistence)
-    checkHovered(vec2(sliderX, 195), vec2(sliderY, 217), true, ui.MouseCursor.ResizeEW, function()
+    onHover(vec2(sliderStart, 197), vec2(sliderEnd, 219), true, ui.MouseCursor.ResizeEW, function()
         if ui.mouseReleased(ui.MouseButton.Right) then
             settings.persistence = 0.5
         end
@@ -189,10 +207,10 @@ function script.settings()
         settings.persistence = persistence.value
     end
 
-    --
+    ---
 
     local opacity = refnumber(settings.opacity)
-    checkHovered(vec2(sliderX, 221), vec2(sliderY, 243), true, ui.MouseCursor.ResizeEW, function()
+    onHover(vec2(sliderStart, 223), vec2(sliderEnd, 245), true, ui.MouseCursor.ResizeEW, function()
         if ui.mouseReleased(ui.MouseButton.Right) then
             settings.opacity = 1
         end
@@ -202,14 +220,14 @@ function script.settings()
         settings.opacity = opacity.value
     end
 
-    --
+    ---
 
     ui.offsetCursorY(10)
     ui.dwriteText('General settings:', 18)
 
-    --
+    ---
 
-    checkHovered(vec2(sliderX, 287), vec2(42, 309), true, ui.MouseCursor.Hand, function() end)
+    onHover(vec2(sliderStart, 289), vec2(42, 311), true, ui.MouseCursor.Hand, function() end)
 
     ui.offsetCursorY(3)
     if ui.checkbox('Pause frost effect', settings.frost) then
@@ -218,7 +236,7 @@ function script.settings()
 
     ui.endGroup()
 
-    --
+    ---
 
     ui.beginGroup(125)
     ui.offsetCursorY(5)
@@ -229,7 +247,7 @@ function script.settings()
 
     ui.dwriteText('Tint', 14)
 
-    checkHovered(vec2(sliderX, 340), vec2(101, 362), true, ui.MouseCursor.ResizeEW, function()
+    onHover(vec2(sliderStart, 342), vec2(101, 364), true, ui.MouseCursor.ResizeEW, function()
         if ui.mouseReleased(ui.MouseButton.Right) then
             settings.tint.r = 0
         end
@@ -240,7 +258,7 @@ function script.settings()
     end
 
 
-    checkHovered(vec2(130, 340), vec2(211, 362), true, ui.MouseCursor.ResizeEW, function()
+    onHover(vec2(130, 342), vec2(211, 364), true, ui.MouseCursor.ResizeEW, function()
         if ui.mouseReleased(ui.MouseButton.Right) then
             settings.tint.g = 0
         end
@@ -252,7 +270,7 @@ function script.settings()
     end
 
 
-    checkHovered(vec2(240, 340), vec2(321, 362), true, ui.MouseCursor.ResizeEW, function()
+    onHover(vec2(240, 342), vec2(321, 364), true, ui.MouseCursor.ResizeEW, function()
         if ui.mouseReleased(ui.MouseButton.Right) then
             settings.tint.b = 0
         end
@@ -265,11 +283,12 @@ function script.settings()
 
     ui.endGroup()
 
+
     ui.beginGroup(400)
     ui.offsetCursorY(10)
 
     local sizeMultRef = refnumber(settings.sizeMult)
-    checkHovered(vec2(sliderX, 376), vec2(sliderY, 398), true, ui.MouseCursor.ResizeEW, function()
+    onHover(vec2(sliderStart, 378), vec2(sliderEnd, 400), true, ui.MouseCursor.ResizeEW, function()
         if ui.mouseReleased(ui.MouseButton.Right) then
             settings.sizeMult = 1
         end
@@ -279,6 +298,71 @@ function script.settings()
         settings.sizeMult = sizeMultRef.value
     end
 
-    ui.offsetCursorY(5) -- extra padding
+    ---
+
+    ui.offsetCursorY(30)
+
+    local flags = 0
+    local screenshotFolder = ac.getFolder(ac.FolderID.Screenshots)
+    local folderExists = io.dirExists(screenshotFolder .. '/noise')
+    local windowPos = ui.windowPos()
+
+    if settings.steps.x > 125 then
+        flags = ui.ButtonFlags.Disabled
+    end
+
+    local hovered = onHover(vec2(20, 434), vec2(240, 464), true, ui.MouseCursor.Hand, function() end)
+    if flags == 0 then
+        if hovered and settings.speed ~= 0 then
+            lastSpeed = settings.speed
+            settings.speed = 0
+        elseif not hovered and settings.speed == 0 then
+            settings.speed = lastSpeed
+        end
+    end
+
+    if ui.button('Export current pattern to image', vec2(220, 30), flags) then
+        if folderExists then goto exists end
+
+        io.createDir(screenshotFolder .. '/noise')
+        --ac.log(folderExists)
+
+        ::exists::
+
+        os.saveFileDialog({
+                title = 'Save noise pattern as an image',
+                defaultFolder = screenshotFolder .. '/noise',
+                fileTypes = { { name = 'Images', mask = '*.png' } },
+                defaultExtension = 'png',
+                addAllFilesFileType = false,
+                okButtonLabel = 'Save',
+                flags = os.DialogFlags.PathMustExist
+            },
+            function(err, filename)
+                if err or not filename then
+                    return
+                end
+
+                savePatternAsImage(dt, filename)
+
+                ui.popup(function()
+                    ui.offsetCursorY(3)
+                    ui.text('Image saved!')
+                    ui.sameLine()
+                    ui.offsetCursorY(-3)
+                    if ui.button('View in folder') then
+                        os.openInExplorer(screenshotFolder .. '/noise')
+                    end
+                end, {
+                    position = vec2(windowPos.x + 275, windowPos.y + 430),
+                    size = vec2(200, 38),
+                    padding = vec2(8, 8)
+                })
+            end
+        )
+    end
+    tooltip('Exports the current noise pattern to a PNG image.')
+
+    ui.offsetCursorY(5)
     ui.endGroup()
 end
