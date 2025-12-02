@@ -14,6 +14,7 @@ local settings = ac.storage {
     tooltipPadding = vec2(8, 8),
 }
 
+local animationPaused = false
 local time = 0
 local lastSpeed = 0
 local appwindow = ac.accessAppWindow('IMGUI_LUA_Noise_main')
@@ -84,7 +85,8 @@ end
 
 function script.windowMain(dt)
     if settings.frost then ui.forceSimplifiedComposition(true) end
-    drawNoise(vec2(0, 0), vec2(300, 300) * settings.sizeMult, dt, settings.octaves, settings.persistence, settings.opacity)
+    local frameDelta = animationPaused and 0 or dt
+    drawNoise(vec2(0, 0), vec2(300, 300) * settings.sizeMult, frameDelta, settings.octaves, settings.persistence, settings.opacity)
     resizeApp()
 end
 
@@ -323,6 +325,8 @@ function script.settings(dt)
     end
 
     if ui.button('Export current pattern to image', vec2(220, 30), flags) then
+        animationPaused = true
+
         if folderExists then goto exists end
 
         io.createDir(screenshotFolder .. '/noise')
@@ -345,6 +349,7 @@ function script.settings(dt)
                 end
 
                 savePatternAsImage(dt, filename)
+                animationPaused = false
 
                 ui.popup(function()
                     ui.offsetCursorY(3)
