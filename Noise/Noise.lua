@@ -11,7 +11,7 @@ local settings = ac.storage {
     steps = vec2(50, 50),
     size = vec2(0.01, 0.01),
 
-    tooltipPadding = vec2(5, 5),
+    tooltipPadding = vec2(8, 8),
 }
 
 local time = 0
@@ -90,7 +90,7 @@ end
 
 --spaghetti code
 function script.settings(dt)
-    ac.debug('mp', ui.mouseLocalPos())
+    --ac.debug('mp', ui.mouseLocalPos())
 
     local sliderStart = 20
     local sliderEnd = 279
@@ -303,15 +303,16 @@ function script.settings(dt)
     ui.offsetCursorY(30)
 
     local flags = 0
+    local windowPos = ui.windowPos()
     local screenshotFolder = ac.getFolder(ac.FolderID.Screenshots)
     local folderExists = io.dirExists(screenshotFolder .. '/noise')
-    local windowPos = ui.windowPos()
 
     if settings.steps.x > 125 then
         flags = ui.ButtonFlags.Disabled
     end
 
     local hovered = onHover(vec2(20, 434), vec2(240, 464), true, ui.MouseCursor.Hand, function() end)
+
     if flags == 0 then
         if hovered and settings.speed ~= 0 then
             lastSpeed = settings.speed
@@ -361,7 +362,11 @@ function script.settings(dt)
             end
         )
     end
+
     tooltip('Exports the current noise pattern to a PNG image.')
+    if flags ~= 0 then
+        tooltip('Exporting at such high resolutions may cause unexpected issues such as\ngame crashing, image distortion, broken images, etc.')
+    end
 
     ui.offsetCursorY(5)
     ui.endGroup()
