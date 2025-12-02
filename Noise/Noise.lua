@@ -345,6 +345,7 @@ function script.settings(dt)
             },
             function(err, filename)
                 if err or not filename then
+                    animationPaused = false
                     return
                 end
 
