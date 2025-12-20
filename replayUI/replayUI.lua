@@ -41,27 +41,24 @@ local replayHz = replayQualityPresets[replayQuality]
 
 --#region helper functions
 
----@param text string Text displayed in the tooltip.
----@param padding? vec2 Default padding `vec2(5, 5)`
-local function tooltip(text, padding)
-    if ui.itemHovered() then
-        ui.tooltip(padding or vec2(5, 5), function() ui.text(text) end)
-    end
-end
-
----@param cursorType ui.MouseCursor
-local function setCursorlastItemHovered(cursorType)
-    if ui.itemHovered() then
-        ui.setMouseCursor(cursorType)
-    end
-end
-
----@param s number
+---@param sec number
+---@return number hrs
 ---@return number min
 ---@return number sec
-local function toMinSec(s)
-    local min, sec = math.floor(s / 60), math.floor(s % 60)
-    return min, sec
+local function timeFromSeconds(sec)
+    local h, m, s = math.floor(sec / 3600), math.floor((sec % 3600) / 60), math.floor(sec % 60)
+    return h, m, s
+end
+
+---@param h number
+---@param m number
+---@param s number
+local function formatTime(h, m, s)
+    if h > 0 then
+        return string.format('%d:%02d:%02d', h, m, s)
+    else
+        return string.format('%d:%02d', m, s)
+    end
 end
 
 ---@return number replayLength @replay length in seconds.
@@ -75,8 +72,8 @@ end
 
 local function drawTimeline()
     local progress = replay.frame / sim.replayFrames
-    local lineStart = vec2(75, 30)
-    local lineEnd = vec2(background.size.x - 75, lineStart.y)
+    local lineStart = vec2(80, 30)
+    local lineEnd = vec2(background.size.x - lineStart.x, lineStart.y)
     local lineThickness = 4
 
     ui.drawSimpleLine(lineStart, lineEnd, colors.timeline.unplayed, lineThickness)
@@ -88,48 +85,52 @@ local function drawTimeline()
 
     ui.pushDWriteFont(app.font)
 
-    local currentMin, currentSec = toMinSec(math.clampN(replay.frame / replayHz, 0, getReplayLength()))
-    ui.dwriteDrawText(string.format('%d:%.2d', currentMin, currentSec), 14, vec2(30, lineStart.y - 10))
+    local currenthrs, currentMin, currentSec = timeFromSeconds(math.clampN(replay.frame / replayHz, 0, getReplayLength()))
+    ui.dwriteDrawText(formatTime(currenthrs, currentMin, currentSec), 14, vec2(22, lineStart.y - 10))
 
-    local min, sec = toMinSec(getReplayLength())
-    ui.dwriteDrawText(string.format('%d:%.2d', min, sec), 14, vec2(background.size.x - 60, lineEnd.y - 10))
+    local hrs, min, sec = timeFromSeconds(getReplayLength())
+    ui.dwriteDrawText(formatTime(hrs, min, sec), 14, vec2(background.size.x - 60, lineEnd.y - 10))
 
     ui.popDWriteFont()
+
+    local padding = vec2(3, 5)
+    if ui.rectHovered(lineStart:sub(padding, vec2()), lineEnd:add(padding, vec2())) then
+        ui.setMouseCursor(ui.MouseCursor.Hand)
+    end
 end
 
+local fileName = ''
 local showTextInput = false
 local function drawButtons()
     local date = os.date('%d.%m.%y-%H:%M')
     local carName, trackName = ac.getCarName(0), ac.getTrackName()
     local replayName = 'replayUI-' .. date .. '-' .. carName .. '-' .. trackName
+
     replayName = replayName:gsub("%s+", "-")
 
-    local saveString = showTextInput and 'Cancel' or 'Save Replay'
     local pressedEnter = false
-    local nameChanged = false
-    local fileName = replayName
+    local saveButtonString = showTextInput and 'Cancel' or 'Save Replay'
 
-    if ui.button(saveString, vec2()) then
+    if ui.button(saveButtonString, vec2()) then
         showTextInput = not showTextInput
+        if showTextInput then fileName = replayName end
     end
-    setCursorlastItemHovered(ui.MouseCursor.Hand)
+
+    ui.sameLine()
+
+    if showTextInput then
+        ui.setCursor(vec2(20, 85))
+        fileName, _, pressedEnter = ui.inputText('', fileName)
+    end
 
     ui.sameLine()
 
     if showTextInput then
         if ui.button('Save', vec2()) then
-            ui.toast(ui.Icons.Save, 'Saved replay in: ' .. ac.getFolder(ac.FolderID.Replays))
-            showTextInput = not showTextInput
+            --saveReplay()
+            showTextInput = false
+            ui.toast(ui.Icons.Save, 'Replay saved in: ' .. ac.getFolder(ac.FolderID.Replays))
         end
-        setCursorlastItemHovered(ui.MouseCursor.Hand)
-    end
-
-    if showTextInput then
-        fileName, nameChanged, pressedEnter = ui.inputText('', fileName)
-    end
-
-    if nameChanged then
-        fileName = fileName
     end
 
     if pressedEnter then
@@ -146,7 +147,6 @@ local function drawButtons()
         replay.speed = 1
         replay.play = not replay.play
     end
-    setCursorlastItemHovered(ui.MouseCursor.Hand)
 
     ui.sameLine()
 
@@ -155,7 +155,6 @@ local function drawButtons()
         ac.setReplayPosition(replay.frame, 1)
         replay.play = false
     end
-    setCursorlastItemHovered(ui.MouseCursor.Hand)
 
     ui.sameLine()
 
@@ -164,7 +163,6 @@ local function drawButtons()
         ac.setReplayPosition(replay.frame, 1)
         replay.play = false
     end
-    setCursorlastItemHovered(ui.MouseCursor.Hand)
 
     ui.sameLine()
 
@@ -174,7 +172,6 @@ local function drawButtons()
         replay.speed = replay.speed + 1
         replay.play = true
     end
-    setCursorlastItemHovered(ui.MouseCursor.Hand)
 
     ui.sameLine()
 
@@ -183,7 +180,6 @@ local function drawButtons()
         replay.rewind = true
         replay.play = true
     end
-    setCursorlastItemHovered(ui.MouseCursor.Hand)
 end
 
 --#endregion
