@@ -1,6 +1,7 @@
 
 local replay = {
     play = false,
+    rewind = false,
     frame = 0,
     length = 0, --in seconds
     speed = 1 --speed multiplier
@@ -27,9 +28,9 @@ local app = {
 local replayQualityPresets = {
     [0] = 8,
     [1] = 12,
-    [2] = 16,
-    [3] = 33,
-    [4] = 67,
+    [2] = 16.6666667,
+    [3] = 33.3333333,
+    [4] = 66.6666667,
 }
 
 local sim = ac.getSim()
@@ -40,8 +41,8 @@ local replayHz = replayQualityPresets[replayQuality]
 
 --#region helper functions
 
----@param padding? vec2 Default padding `vec2(5, 5)`
 ---@param text string Text displayed in the tooltip.
+---@param padding? vec2 Default padding `vec2(5, 5)`
 local function tooltip(text, padding)
     if ui.itemHovered() then
         ui.tooltip(padding or vec2(5, 5), function() ui.text(text) end)
@@ -70,6 +71,8 @@ end
 
 --#endregion helper functions
 
+--#region drawing functions
+
 local function drawTimeline()
     local progress = replay.frame / sim.replayFrames
     local lineStart = vec2(75, 30)
@@ -77,9 +80,9 @@ local function drawTimeline()
     local lineThickness = 4
 
     ui.drawSimpleLine(lineStart, lineEnd, colors.timeline.unplayed, lineThickness)
-    ui.drawSimpleLine(lineStart, vec2(math.clamp(75 + (progress * (background.size.x - 150)), 0, lineEnd.x), lineEnd.y), colors.timeline.played, lineThickness)
+    ui.drawSimpleLine(lineStart, vec2(math.clampN(75 + (progress * (background.size.x - 150)), lineStart.x, lineEnd.x), lineEnd.y), colors.timeline.played, lineThickness)
 
-    local cursor = vec2(math.clamp(75 + (progress * (background.size.x - 150)), 0, background.size.x - 75), lineStart.y)
+    local cursor = vec2(math.clampN(75 + (progress * (background.size.x - 150)), lineStart.x, background.size.x - 75), lineStart.y)
     ui.drawCircleFilled(cursor, 5, colors.timeline.circle)
     ui.drawCircle(cursor, 5, colors.timeline.circleBorder)
 
@@ -94,39 +97,126 @@ local function drawTimeline()
     ui.popDWriteFont()
 end
 
-local function drawReplayHUD()
-    background.size = vec2(1200, 130)
-    background.pos = vec2((sim.windowSize.x / 2) - (background.size.x / 2), (sim.windowSize.y - 165) - (background.size.y / 2))
+local showTextInput = false
+local function drawButtons()
+    local date = os.date('%d.%m.%y-%H:%M')
+    local carName, trackName = ac.getCarName(0), ac.getTrackName()
+    local replayName = 'replayUI-' .. date .. '-' .. carName .. '-' .. trackName
+    replayName = replayName:gsub("%s+", "-")
 
-    ui.drawRectFilled(vec2(0, 0), background.size, rgbm(0, 0, 0, 0.3), 7, ui.CornerFlags.Top)
+    local saveString = showTextInput and 'Cancel' or 'Save Replay'
+    local pressedEnter = false
+    local nameChanged = false
+    local fileName = replayName
 
-    drawTimeline()
+    if ui.button(saveString, vec2()) then
+        showTextInput = not showTextInput
+    end
+    setCursorlastItemHovered(ui.MouseCursor.Hand)
 
+    ui.sameLine()
 
-    ui.offsetCursorY(75)
+    if showTextInput then
+        if ui.button('Save', vec2()) then
+            ui.toast(ui.Icons.Save, 'Saved replay in: ' .. ac.getFolder(ac.FolderID.Replays))
+            showTextInput = not showTextInput
+        end
+        setCursorlastItemHovered(ui.MouseCursor.Hand)
+    end
 
-    local playString = replay.play and 'pause' or 'play'
+    if showTextInput then
+        fileName, nameChanged, pressedEnter = ui.inputText('', fileName)
+    end
 
-    if ui.button(playString, vec2(), replay.play) then
+    if nameChanged then
+        fileName = fileName
+    end
+
+    if pressedEnter then
+        --saveReplay()
+        showTextInput = false
+        ui.toast(ui.Icons.Save, 'Replay saved in: ' .. ac.getFolder(ac.FolderID.Replays))
+    end
+
+    ui.sameLine()
+
+    local playString = replay.play and 'Pause' or 'Play'
+
+    if ui.button(playString, vec2()) then
+        replay.speed = 1
         replay.play = not replay.play
+    end
+    setCursorlastItemHovered(ui.MouseCursor.Hand)
+
+    ui.sameLine()
+
+    if ui.button('Stop', vec2()) then
+        replay.frame = 0
+        ac.setReplayPosition(replay.frame, 1)
+        replay.play = false
+    end
+    setCursorlastItemHovered(ui.MouseCursor.Hand)
+
+    ui.sameLine()
+
+    if ui.button('Skip', vec2()) then
+        replay.frame = replay.frame + 1
+        ac.setReplayPosition(replay.frame, 1)
+        replay.play = false
+    end
+    setCursorlastItemHovered(ui.MouseCursor.Hand)
+
+    ui.sameLine()
+
+    local mult = replay.speed
+
+    if ui.button(mult .. 'x FF', vec2()) then
+        replay.speed = replay.speed + 1
+        replay.play = true
+    end
+    setCursorlastItemHovered(ui.MouseCursor.Hand)
+
+    ui.sameLine()
+
+    if ui.button(mult .. 'x Rewind', vec2()) then
+        replay.speed = replay.speed + 1
+        replay.rewind = true
+        replay.play = true
     end
     setCursorlastItemHovered(ui.MouseCursor.Hand)
 end
 
+--#endregion
+
 ui.onExclusiveHUD(function(mode)
     if mode ~= 'replay' then return end
 
-    ui.transparentWindow('background', background.pos, background.size, false, true, function()
-        drawReplayHUD()
+    ui.transparentWindow('replayUI', background.pos, background.size, false, true, function()
+        background.size = vec2(1200, 130)
+        background.pos = vec2((sim.windowSize.x / 2) - (background.size.x / 2), (sim.windowSize.y - 165) - (background.size.y / 2))
+
+        ui.drawRectFilled(vec2(0, 0), background.size, rgbm(0, 0, 0, 0.3), 7, ui.CornerFlags.Top)
+
+        drawTimeline()
+        ui.offsetCursorY(50)
+        drawButtons()
     end)
 end)
 
 function script.update(dt)
     replay.length = getReplayLength()
-    ac.debug('replay length', getReplayLength())
+
+    if replay.frame == sim.replayFrames then
+        replay.play = false
+    end
 
     if replay.play then
         replay.frame = replay.frame + (dt * replayHz) * replay.speed
+        ac.setReplayPosition(replay.frame, 1)
+    end
+
+    if replay.rewind then
+        replay.frame = replay.frame - (dt * replayHz) * replay.speed
         ac.setReplayPosition(replay.frame, 1)
     end
 end
