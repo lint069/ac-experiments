@@ -66,7 +66,7 @@ local function getReplayLength()
     return sim.replayFrames / replayHz
 end
 
---#endregion helper functions
+--#endregion
 
 --#region drawing functions
 
@@ -78,9 +78,9 @@ local function drawTimeline()
     local lineThickness = 4
 
     ui.drawSimpleLine(lineStart, lineEnd, colors.timeline.unplayed, lineThickness)
-    ui.drawSimpleLine(lineStart, vec2(lineStart.x + progress * (lineEnd.x - lineStart.x), lineEnd.y), colors.timeline.played, lineThickness)
+    ui.drawSimpleLine(lineStart, vec2(math.clampN(lineStart.x + progress * (lineEnd.x - lineStart.x), lineStart.x, lineEnd.x), lineEnd.y), colors.timeline.played, lineThickness)
 
-    local cursor = vec2(lineStart.x + progress * (lineEnd.x - lineStart.x), lineStart.y)
+    local cursor = vec2(math.clampN(lineStart.x + progress * (lineEnd.x - lineStart.x), lineStart.x, lineEnd.x), lineStart.y)
     ui.drawCircleFilled(cursor, 5, colors.timeline.circle)
     ui.drawCircle(cursor, 5, colors.timeline.circleBorder)
 
