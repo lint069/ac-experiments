@@ -17,7 +17,7 @@ local colors = {
         unplayed = rgbm(0.3, 0.3, 0.3, 1),
         played = rgbm(0.9, 0.9, 0.9, 1),
         circle = rgbm(0.85, 0.85, 0.85, 1),
-        circleBorder = rgbm(0.95, 0.95, 0.95, 0.95)
+        circleBorder = rgbm(0.94, 0.94, 0.94, 0.94)
     }
 }
 
@@ -70,6 +70,7 @@ end
 
 --#region drawing functions
 
+local padding = vec2(4, 7)
 local function drawTimeline()
     local progress = replay.frame / sim.replayFrames
     local lineStart = vec2(80, 30)
@@ -77,25 +78,36 @@ local function drawTimeline()
     local lineThickness = 4
 
     ui.drawSimpleLine(lineStart, lineEnd, colors.timeline.unplayed, lineThickness)
-    ui.drawSimpleLine(lineStart, vec2(math.clampN(75 + (progress * (background.size.x - 150)), lineStart.x, lineEnd.x), lineEnd.y), colors.timeline.played, lineThickness)
+    ui.drawSimpleLine(lineStart, vec2(lineStart.x + progress * (lineEnd.x - lineStart.x), lineEnd.y), colors.timeline.played, lineThickness)
 
-    local cursor = vec2(math.clampN(75 + (progress * (background.size.x - 150)), lineStart.x, background.size.x - 75), lineStart.y)
+    local cursor = vec2(lineStart.x + progress * (lineEnd.x - lineStart.x), lineStart.y)
     ui.drawCircleFilled(cursor, 5, colors.timeline.circle)
     ui.drawCircle(cursor, 5, colors.timeline.circleBorder)
 
     ui.pushDWriteFont(app.font)
 
-    local currenthrs, currentMin, currentSec = timeFromSeconds(math.clampN(replay.frame / replayHz, 0, getReplayLength()))
-    ui.dwriteDrawText(formatTime(currenthrs, currentMin, currentSec), 14, vec2(22, lineStart.y - 10))
+    local currentHrs, currentMin, currentSec = timeFromSeconds(math.clampN(replay.frame / replayHz, 0, getReplayLength()))
+    ui.dwriteDrawText(formatTime(currentHrs, currentMin, currentSec), 14, vec2(22, lineStart.y - 10))
 
     local hrs, min, sec = timeFromSeconds(getReplayLength())
     ui.dwriteDrawText(formatTime(hrs, min, sec), 14, vec2(background.size.x - 60, lineEnd.y - 10))
 
     ui.popDWriteFont()
 
-    local padding = vec2(3, 5)
-    if ui.rectHovered(lineStart:sub(padding, vec2()), lineEnd:add(padding, vec2())) then
+    local timelineWidth = (lineEnd.x - lineStart.x)
+    if ui.rectHovered(lineStart - padding, lineEnd + padding) then
         ui.setMouseCursor(ui.MouseCursor.Hand)
+
+        if ui.mouseDown(ui.MouseButton.Left) or ui.isMouseDragging(ui.MouseButton.Left) then
+            padding = vec2(30, 30)
+            local mouseRelative = math.clampN(ui.mouseLocalPos().x - lineStart.x, 0, timelineWidth)
+            local frame = (mouseRelative / timelineWidth) * sim.replayFrames
+
+            replay.frame = frame
+            ac.setReplayPosition(replay.frame, 1)
+        else
+            padding = vec2(4, 7)
+        end
     end
 end
 
